@@ -1,6 +1,7 @@
 import { FFmpeg } from './vendor/ffmpeg/index.js';
 import { openEditor } from './editor.js';
 import { PDF_FORMATS, PDF_DPI, pdfInfo, convertPdf } from './pdf.js';
+import { OFFICE_FORMATS, OFFICE_QUALITY, officeKind, convertOffice } from './office.js';
 
 // Decode any image to something drawable; fall back to FFmpeg for formats the browser can't read (e.g. TIFF).
 async function decodeImage(file) {
@@ -21,6 +22,7 @@ const FORMATS = {
   audio: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'opus'],
   video: ['mp4', 'webm', 'mov', 'gif', 'mp3 (audio only)'],
   pdf: PDF_FORMATS,
+  office: OFFICE_FORMATS,
 };
 const QUALITY = ['high', 'medium', 'small'];
 const SIZES = {
@@ -41,6 +43,7 @@ const EXT_KIND = {
 const ext = (name) => (name.split('.').pop() || '').toLowerCase();
 function kindOf(file) {
   if (file.type === 'application/pdf' || ext(file.name) === 'pdf') return 'pdf';
+  if (officeKind(file.name)) return 'office';
   const t = (file.type || '').split('/')[0];
   if (['image', 'audio', 'video'].includes(t)) return t;
   const e = ext(file.name);
@@ -144,7 +147,7 @@ let busy = false, cancelled = false;
 
 function defaultFormat(kind, file) {
   const e = ext(file.name);
-  return { image: e === 'png' ? 'jpg' : 'png', audio: e === 'mp3' ? 'wav' : 'mp3', video: e === 'mp4' ? 'webm' : 'mp4', pdf: 'png' }[kind];
+  return { image: e === 'png' ? 'jpg' : 'png', audio: e === 'mp3' ? 'wav' : 'mp3', video: e === 'mp4' ? 'webm' : 'mp4', pdf: 'png', office: 'pdf' }[kind];
 }
 
 function select(options, value, label) {
@@ -158,7 +161,7 @@ function select(options, value, label) {
 function addFiles(files) {
   for (const file of files) {
     const kind = kindOf(file);
-    if (!kind) continue;
+    if (!kind) { unsupported(file); continue; }
     const el = document.createElement('div');
     el.className = 'card';
     el.innerHTML = `
@@ -167,6 +170,7 @@ function addFiles(files) {
       <div class="opts"></div>
       <div class="status"><div class="track"><div class="fill"></div></div><div class="msg">ready</div><div class="actions"></div></div>`;
     el.querySelector('.name').textContent = file.name;
+    if (kind === 'office') el.querySelector('.chip').textContent = ext(file.name).startsWith('ppt') ? 'pptx' : 'docx';
     const opts = el.querySelector('.opts');
     const fmtSel = select(FORMATS[kind], defaultFormat(kind, file), 'format');
     let qSel, pagesIn = null;
@@ -184,6 +188,9 @@ function addFiles(files) {
       const sync = () => { qSel.style.visibility = fmtSel.value === 'docx (editable text)' ? 'hidden' : ''; };
       fmtSel.addEventListener('change', sync);
       pagesIn.addEventListener('change', () => reset(item));
+    } else if (kind === 'office') {
+      qSel = select(OFFICE_QUALITY, 'high', 'quality');
+      opts.append(fmtSel, qSel);
     } else {
       qSel = select(QUALITY, 'high', 'quality');
       opts.append(fmtSel, qSel);
@@ -212,6 +219,23 @@ function addFiles(files) {
     items.push(item);
   }
   render();
+}
+
+const OLD_OFFICE = { doc: 'Word 97-2003 (.doc)', ppt: 'PowerPoint 97-2003 (.ppt)', xls: 'Excel', xlsx: 'Excel', odt: 'OpenDocument', odp: 'OpenDocument' };
+function unsupported(file) {
+  const e = ext(file.name);
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `<div class="meta"><div class="name"></div><div class="sub"><span>${e || '?'}</span><span>${fmtBytes(file.size)}</span></div></div>
+    <div class="opts"><button class="x" title="Remove">✕</button></div>
+    <div class="status"><div class="track"><div class="fill" style="width:100%;background:var(--err)"></div></div><div class="msg err"></div></div>`;
+  el.querySelector('.name').textContent = file.name;
+  el.querySelector('.msg').textContent = e === 'doc' || e === 'ppt'
+    ? `${OLD_OFFICE[e]} isn't supported — save it as .${e}x first`
+    : OLD_OFFICE[e] ? `${OLD_OFFICE[e]} files aren't supported yet` : "this file type isn't supported";
+  el.querySelector('.x').onclick = () => el.remove();
+  list.querySelector('.empty')?.remove();
+  list.appendChild(el);
 }
 
 function reset(item) {
@@ -250,6 +274,10 @@ async function convert(item) {
   try {
     if (item.kind === 'pdf') {
       const r = await convertPdf(item.file, { fmt, dpi: q, pages: item.pages() }, (p, label) => setStatus(item, 5 + p * 95, label));
+      blob = r.blob; outName = r.name;
+    }
+    if (item.kind === 'office') {
+      const r = await convertOffice(item.file, { q }, (p, label) => setStatus(item, 3 + p * 97, label));
       blob = r.blob; outName = r.name;
     }
     if (item.kind === 'image') blob = await canvasConvert(item.file, fmt, q, size);
