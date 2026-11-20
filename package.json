@@ -1,0 +1,26 @@
+{
+  "name": "scratch-2026-11-20-432860",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "docx": "^9.5.1",
+    "http-server": "^14.1.1",
+    "jszip": "^3.10.1",
+    "pdfjs-dist": "^4.10.38",
+    "pptxgenjs": "^3.12.0"
+  },
+  "devDependencies": {
+    "pdf-lib": "^1.17.1"
+  }
+}
